@@ -1,0 +1,176 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản Lý Giặt Ủi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4 max-w-3xl">
+    <h1 class="text-3xl font-bold text-center mb-6">Quản Lý Giặt Ủi</h1>
+    
+    <!-- Form nhập liệu -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-xl font-semibold mb-4">Nhập Liệu Giặt Ủi</h2>
+      <div class="grid gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Số phòng</label>
+          <input id="roomNumber" type="text" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Nhập số phòng">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Số kg</label>
+          <input id="weight" type="number" step="0.1" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Nhập số kg">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Lưu ý</label>
+          <div class="mt-1 flex gap-4">
+            <label><input type="checkbox" id="quickWash"> Giặt nhanh</label>
+            <label><input type="checkbox" id="shoes"> Thêm giày</label>
+          </div>
+        </div>
+        <button onclick="addEntry()" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Thêm</button>
+      </div>
+    </div>
+    
+    <!-- Danh sách nhập liệu -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 class="text-xl font-semibold mb-4">Danh Sách Nhập Liệu</h2>
+      <table class="w-full text-left">
+        <thead>
+          <tr class="bg-gray-200">
+            <th class="p-2">Ngày</th>
+            <th class="p-2">Phòng</th>
+            <th class="p-2">Số kg</th>
+            <th class="p-2">Lưu ý</th>
+          </tr>
+        </thead>
+        <tbody id="entryList"></tbody>
+      </table>
+    </div>
+    
+    <!-- Báo cáo hàng tháng -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h2 class="text-xl font-semibold mb-4">Báo Cáo Hàng Tháng</h2>
+      <div class="flex gap-4 mb-4">
+        <input id="reportMonth" type="month" class="p-2 border border-gray-300 rounded-md">
+        <button onclick="generateReport()" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600">Xem Báo Cáo</button>
+      </div>
+      <div id="reportResult" class="text-lg"></div>
+    </div>
+  </div>
+
+  <script>
+    let entries = JSON.parse(localStorage.getItem('laundryEntries')) || [];
+
+    function addEntry() {
+      const roomNumber = document.getElementById('roomNumber').value;
+      const weight = parseFloat(document.getElementById('weight').value);
+      const quickWash = document.getElementById('quickWash').checked;
+      const shoes = document.getElementById('shoes').checked;
+
+      if (!roomNumber || isNaN(weight) || weight <= 0) {
+        alert('Vui lòng nhập số phòng và số kg hợp lệ!');
+        return;
+      }
+
+      const notes = [];
+      if (quickWash) notes.push('Giặt nhanh');
+      if (shoes) notes.push('Thêm giày');
+
+      const entry = {
+        date: new Date().toISOString(),
+        roomNumber,
+        weight,
+        notes: notes.join(', ')
+      };
+
+      entries.push(entry);
+      localStorage.setItem('laundryEntries', JSON.stringify(entries));
+      displayEntries();
+      clearForm();
+    }
+
+    function displayEntries() {
+      const entryList = document.getElementById('entryList');
+      entryList.innerHTML = '';
+      entries.forEach(entry => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="p-2">${new Date(entry.date).toLocaleDateString('vi-VN')}</td>
+          <td class="p-2">${entry.roomNumber}</td>
+          <td class="p-2">${entry.weight} kg</td>
+          <td class="p-2">${entry.notes || 'Không'}</td>
+        `;
+        entryList.appendChild(row);
+      });
+    }
+
+    function generateReport() {
+      const reportMonth = document.getElementById('reportMonth').value;
+      if (!reportMonth) {
+        alert('Vui lòng chọn tháng để xem báo cáo!');
+        return;
+      }
+
+      const [year, month] = reportMonth.split('-');
+      const filteredEntries = entries.filter(entry => {
+        const entryDate = new Date(entry.date);
+        return entryDate.getFullYear() == year && (entryDate.getMonth() + 1) == month;
+      });
+
+      const totalWeight = filteredEntries.reduce((sum, entry) => sum + entry.weight, 0);
+      document.getElementById('reportResult').innerHTML = `Tổng số kg trong tháng ${month}/${year}: ${totalWeight.toFixed(1)} kg`;
+    }
+
+    function clearForm() {
+      document.getElementById('roomNumber').value = '';
+      document.getElementById('weight').value = '';
+      document.getElementById('quickWash').checked = false;
+      document.getElementById('shoes').checked = false;
+    }
+
+    // Hiển thị danh sách khi tải trang
+    displayEntries();
+  </script>
+</body>
+</html>
